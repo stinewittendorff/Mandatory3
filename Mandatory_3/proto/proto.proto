@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+option go_package = "mandatory_3/proto";
+
+package proto;
+
+message join {
+    string name = 1;
+    int64 timestamp = 2;
+}
+
+message leave {
+    string name = 1;
+    int64 timestamp = 2;
+}
+
+message Chatmessage {
+    string name = 1;
+    string message = 2; 
+    int64 timestamp = 3;
+}
+
+message Servermessage {
+    string message = 1;
+    int64 timestamp = 2;
+}
+
+service ChittyChat {
+	rpc Broadcast(Chatmessage) returns (Chatmessage) {};
+	rpc Join(join) returns (stream Servermessage) {};
+    rpc Leave(leave) returns (Chatmessage) {};
+}
