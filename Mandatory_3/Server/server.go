@@ -52,12 +52,13 @@ func (s *server) Broadcast(ctx context.Context, in *proto.Chatmessage) (*proto.C
 	} else {
 		s.incrementLamport()
 	}
+	log.Printf("The server's lamport time is %d", s.lamport)
 
 	//This defines a Chatmessage objects, where we init the fields
 	chat := &proto.Chatmessage{
 		Name:      in.Name,
 		Message:   in.Message,
-		Timestamp: in.Timestamp,
+		Timestamp: s.lamport,
 	}
 
 	// The _ is used to let Go ignore the variable that iterates in the loop also called the blank identifier
@@ -65,14 +66,16 @@ func (s *server) Broadcast(ctx context.Context, in *proto.Chatmessage) (*proto.C
 	for _, channel := range s.messageChan {
 		channel <- &proto.Servermessage{
 			Message:   in.Name + ": " + in.Message,
-			Timestamp: chat.Timestamp,
+			Timestamp: s.lamport,
 		}
 	}
 
+	log.Printf("Broadcasting message \"%s\" at time %d", in.Message, s.lamport)
 	return chat, nil
 }
 
 func (s *server) Join(in *proto.Join, stream grpc.ServerStreamingServer[proto.Servermessage]) error {
+
 	if in.Timestamp > int64(s.lamport) {
 		s.lamport = in.Timestamp + 1
 	} else {
@@ -120,7 +123,7 @@ func (s *server) Leave(ctx context.Context, in *proto.Leave) (*proto.Chatmessage
 
 	announcement := &proto.Servermessage{
 		Message:   in.Name + " has left",
-		Timestamp: in.Timestamp,
+		Timestamp: s.lamport,
 	}
 
 	// Sends announcement that a user has left the chatroom to all connected clients, whereafter the users channel is deleted
@@ -132,7 +135,7 @@ func (s *server) Leave(ctx context.Context, in *proto.Leave) (*proto.Chatmessage
 	// Defines a Leave object that shows that a user has left and a timestamp for when they left
 	LeaveMessage := &proto.Chatmessage{
 		Name:      in.Name,
-		Timestamp: in.Timestamp,
+		Timestamp: s.lamport,
 	}
 	return LeaveMessage, nil
 }

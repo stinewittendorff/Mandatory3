@@ -50,10 +50,7 @@ func main() {
 
 	go JoinChatroom(severConnection, c)
 
-	for {
-
-	}
-
+	for {}
 }
 
 // The function establishes a connection with the GRPC server, at a specified Ip and port
@@ -109,7 +106,6 @@ func JoinChatroom(serverConn proto.ChittyChatClient, client *client) {
 				}
 
 				joined = true
-				log.Printf("Joined the chatroom")
 				go receiveMessages(messageStream, client)
 			} else {
 				log.Printf("chatroom is not joined, use /join to join the chatroom")
@@ -117,6 +113,7 @@ func JoinChatroom(serverConn proto.ChittyChatClient, client *client) {
 			continue
 		}
 		client.incrementLamport()
+		
 
 		//Checks if the user wants to leave the chatroom
 		if input == "/leave" {
@@ -141,6 +138,7 @@ func JoinChatroom(serverConn proto.ChittyChatClient, client *client) {
 func receiveMessages(messageStream proto.ChittyChat_JoinClient, client *client) {
 	for joined {
 		message, err := messageStream.Recv()
+	
 		// starts by checking if the server has closed the stream
 		if err == io.EOF {
 			log.Printf("The server has closed the stream\n")
@@ -150,14 +148,15 @@ func receiveMessages(messageStream proto.ChittyChat_JoinClient, client *client) 
 			log.Fatalf("Could not receive message %v\n", err)
 		}
 
-		//And lastly logs the received message with its timestamp
-		log.Printf("Received message \"%s\" at time %d\n", message.Message, message.Timestamp)
-
 		// Updates the users lamport timestamp based on a received messages timestamp
 		if message.Timestamp > client.lamport {
 			client.lamport = message.Timestamp + 1
 		} else {
 			client.incrementLamport()
 		}
+
+		//And lastly logs the received message with its timestamp
+		log.Printf("Received message \"%s\" at time %d\n", message.Message, message.Timestamp)
+
 	}
 }
