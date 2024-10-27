@@ -2,13 +2,13 @@ package main
 
 import (
 	"ChittyChat/proto"
-	"flag"
-	"log"
-	"sync/atomic"
 	"bufio"
-	"os"
-	"io"
 	"context"
+	"flag"
+	"io"
+	"log"
+	"os"
+	"sync/atomic"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -37,7 +37,7 @@ func (c *client) incrementLamport() {
 func main() {
 	flag.Parse()
 
-	// creation of a new client called c 
+	// creation of a new client called c
 	c := &client{
 		name:    *name,
 		port:    *ClientPort,
@@ -47,14 +47,19 @@ func main() {
 	severConnection, _ := connectToServer()
 
 	defer leaveChat(severConnection, c)
-	
+
 	go JoinChatroom(severConnection, c)
+
+	for {
+
+	}
+
 }
 
-//The function establishes a connection with the GRPC server, at a specified Ip and port
-//If it fails, it logs and error and exits the program
+// The function establishes a connection with the GRPC server, at a specified Ip and port
+// If it fails, it logs and error and exits the program
 func connectToServer() (proto.ChittyChatClient, error) {
-	conn, err := grpc.Dial(*ServerIP+*ServerPort, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(*ServerIP+":"+*ServerPort, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Could not connect to the port%s\n", *ServerPort)
 	}
@@ -78,11 +83,13 @@ func leaveChat(serverConn proto.ChittyChatClient, client *client) {
 
 // "JoinChatroom" is used to join chatrooms and make interactions with the server while a user is active in the chatroom
 func JoinChatroom(serverConn proto.ChittyChatClient, client *client) {
+
 	//starts by setting up a scanner to read the input that the user gives
 	scanner := bufio.NewScanner(os.Stdin)
+	log.Printf("entering loop")
 
 	for scanner.Scan() {
-		input := scanner.Text();
+		input := scanner.Text()
 
 		//Checks if the message is too long
 		if len(input) > 128 {
@@ -94,13 +101,15 @@ func JoinChatroom(serverConn proto.ChittyChatClient, client *client) {
 		if !joined {
 			if input == "/join" {
 				messageStream, err := serverConn.Join(context.Background(), &proto.Join{
-					Timestamp: client.lamport, 
-					Name: client.name,
+					Timestamp: client.lamport,
+					Name:      client.name,
 				})
 				if err != nil {
 					log.Fatalf("Could not join the chatroom %v\n", err)
 				}
+
 				joined = true
+				log.Printf("Joined the chatroom")
 				go receiveMessages(messageStream, client)
 			} else {
 				log.Printf("chatroom is not joined, use /join to join the chatroom")
@@ -112,21 +121,20 @@ func JoinChatroom(serverConn proto.ChittyChatClient, client *client) {
 		//Checks if the user wants to leave the chatroom
 		if input == "/leave" {
 			leaveChat(serverConn, client)
-			break
+			continue
 		}
 
 		//Sends the message to the server
 		_, err := serverConn.Broadcast(context.Background(), &proto.Chatmessage{
 			Timestamp: client.lamport,
-			Name: client.name,
-			Message: input,
+			Name:      client.name,
+			Message:   input,
 		})
 		if err != nil {
 			log.Fatalf("Could not send message %v\n", err)
 		}
 
-
-}
+	}
 }
 
 // "receiveMessages" is used to continuously receive messages from a server
@@ -142,14 +150,14 @@ func receiveMessages(messageStream proto.ChittyChat_JoinClient, client *client) 
 			log.Fatalf("Could not receive message %v\n", err)
 		}
 
+		//And lastly logs the received message with its timestamp
+		log.Printf("Received message \"%s\" at time %d\n", message.Message, message.Timestamp)
+
 		// Updates the users lamport timestamp based on a received messages timestamp
 		if message.Timestamp > client.lamport {
 			client.lamport = message.Timestamp + 1
 		} else {
 			client.incrementLamport()
 		}
-
-		//And lastly logs the received message with its timestamp
-		log.Printf("Received message \"%s\" at time %d\n", message.Message, message.Timestamp)
 	}
 }

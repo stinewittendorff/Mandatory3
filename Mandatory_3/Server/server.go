@@ -1,53 +1,53 @@
 package main
 
-import(
-	proto"ChittyChat/proto"
+import (
+	proto "ChittyChat/proto"
 	"context"
-	"log"
 	"flag"
+	"log"
 	"net"
 	"sync/atomic"
+
 	"google.golang.org/grpc"
 )
 
-type server struct{
+type server struct {
 	proto.UnimplementedChittyChatServer
-	lamport int64
-	port string 
-	messageChan map[string] chan *proto.Servermessage
+	lamport     int64
+	port        string
+	messageChan map[string]chan *proto.Servermessage
 }
 
-// flag is commadn line argument in the format of a string that is 
-//used to define and manipulate paremters/values in your program
+// flag is commadn line argument in the format of a string that is
+// used to define and manipulate paremters/values in your program
 var port = flag.String("port", "8080", "The server port")
 
-func main(){
+func main() {
 	flag.Parse()
 	log.Printf("Starting server on port %s", *port)
 
 	s := &server{
-		lamport: 1,
-		port: *port,
-		messageChan: make(map[string] chan *proto.Servermessage),
+		lamport:     1,
+		port:        *port,
+		messageChan: make(map[string]chan *proto.Servermessage),
 	}
-	
-	launch(s);
+
+	launch(s)
 }
 
 // atomic.AddInt64 is to make sure that we don't end in a racecondition
-// where several threads try to increment it concurrently 
-func (s *server) incrementLamport(){
+// where several threads try to increment it concurrently
+func (s *server) incrementLamport() {
 	atomic.AddInt64(&s.lamport, 1)
 }
 
-
-func (s* server) Broadcast(ctx context.Context, in *proto.Chatmessage) (*proto.Chatmessage, error){
+func (s *server) Broadcast(ctx context.Context, in *proto.Chatmessage) (*proto.Chatmessage, error) {
 	log.Printf("Client %s sends message \"%s\" at time %d", in.Name, in.Message, in.Timestamp)
 
 	// This updates our servers lamport timestamp (Logical time)
 	// If the servers timestamp is less than the message it adjust it to be one unit ahead of the messsage
 	// and if the message is equal or less it just adds one to it's own logical clock
-	if in.Timestamp > s.lamport{
+	if in.Timestamp > s.lamport {
 		s.lamport = in.Timestamp + 1
 	} else {
 		s.incrementLamport()
@@ -55,28 +55,28 @@ func (s* server) Broadcast(ctx context.Context, in *proto.Chatmessage) (*proto.C
 
 	//This defines a Chatmessage objects, where we init the fields
 	chat := &proto.Chatmessage{
-		Name: in.Name,
-		Message: in.Message,
+		Name:      in.Name,
+		Message:   in.Message,
 		Timestamp: in.Timestamp,
 	}
 
 	// The _ is used to let Go ignore the variable that iterates in the loop also called the blank identifier
 	// we use range to get both the key and value, and in this case because of the underscore we ignore the key
-	for _, channel := range s.messageChan{
+	for _, channel := range s.messageChan {
 		channel <- &proto.Servermessage{
-			Message: in.Name + ": " + in.Message,
+			Message:   in.Name + ": " + in.Message,
 			Timestamp: chat.Timestamp,
 		}
 	}
 
-	return chat, nil	
+	return chat, nil
 }
 
-func (s* server) join (in *proto.Join, messageStream proto.ChittyChat_JoinClient) error{
-	if in.Timestamp > int64(s.lamport){
+func (s *server) Join(in *proto.Join, stream grpc.ServerStreamingServer[proto.Servermessage]) error {
+	if in.Timestamp > int64(s.lamport) {
 		s.lamport = in.Timestamp + 1
 	} else {
-		s.incrementLamport();
+		s.incrementLamport()
 	}
 
 	log.Printf("The client %s has requested to join the chat at lamport time %d", in.Name, in.Timestamp)
@@ -89,55 +89,55 @@ func (s* server) join (in *proto.Join, messageStream proto.ChittyChat_JoinClient
 	}
 
 	response := &proto.Servermessage{
-		Message: "The client " + in.Name + "has joined the chat",
+		Message:   "The client " + in.Name + "has joined the chat",
 		Timestamp: s.lamport,
 	}
 
-	for _, channel := range s.messageChan{
+	for _, channel := range s.messageChan {
 		channel <- response
 	}
-	
-	for{
-		select{
-		case <- messageStream.Context().Done() :
+
+	for {
+		select {
+		case <-stream.Context().Done():
 			log.Printf("The client %d's stream has closed.\n", in.Name)
 			return nil
 		case message := <-s.messageChan[in.Name]:
-			messageStream.SendMsg(message)
+			stream.SendMsg(message)
 		}
 	}
 }
 
-func (s* server) leave (ctx context.Context, in proto.Leave) (*proto.Leave, error){
+func (s *server) Leave(ctx context.Context, in *proto.Leave) (*proto.Chatmessage, error) {
 	// This updates our servers lamport timestamp
-	if in.Timestamp > s.lamport{
+	if in.Timestamp > s.lamport {
 		s.lamport = in.Timestamp + 1
 	} else {
 		s.incrementLamport()
 	}
 
 	log.Printf("Client %s requested leaving at time %d", in.Name, in.Timestamp)
-	
+
 	announcement := &proto.Servermessage{
-		Message: in.Name + " has left",
+		Message:   in.Name + " has left",
 		Timestamp: in.Timestamp,
 	}
-	
+
 	// Sends announcement that a user has left the chatroom to all connected clients, whereafter the users channel is deleted
-	for _, channel := range s.messageChan{
+	for _, channel := range s.messageChan {
 		channel <- announcement
 	}
 	delete(s.messageChan, in.Name)
-	
+
 	// Defines a Leave object that shows that a user has left and a timestamp for when they left
-	LeaveMessage:= &proto.Leave{
-		Name: in.Name,
-		Timestamp : in.Timestamp,
+	LeaveMessage := &proto.Chatmessage{
+		Name:      in.Name,
+		Timestamp: in.Timestamp,
 	}
-	return LeaveMessage, nil		
+	return LeaveMessage, nil
 }
 
-func launch (s *server) {
+func launch(s *server) {
 	grpcServer := grpc.NewServer()
 
 	//Creating a listener, to listen for messages
@@ -145,12 +145,11 @@ func launch (s *server) {
 	// tcp is the protocol
 	listener, err := net.Listen("tcp", ":"+s.port)
 
-	
 	//If there is a faliure
 	if err != nil {
 		log.Fatalf("Could not create the server %v\n", err)
 	}
-	
+
 	// If all works as it should
 	log.Printf("started the server at port s%\n", s.port)
 
@@ -158,11 +157,10 @@ func launch (s *server) {
 
 	//listens to a specifik port for messages
 	Errorserver := grpcServer.Serve(listener)
-	
+
 	//if it isn't nil then there is an error
-	if Errorserver != nil{
+	if Errorserver != nil {
 		log.Fatalf("Could not serve listener\n")
 	}
-	
-}
 
+}
