@@ -149,14 +149,14 @@ func receiveMessages(messageStream proto.ChittyChat_JoinClient, client *client) 
 		}
 
 		// Updates the users lamport timestamp based on a received messages timestamp
-		if message.Timestamp > client.lamport {
+		if message.Timestamp > int64(client.lamport) {
 			client.lamport = message.Timestamp + 1
 		} else {
 			client.incrementLamport()
 		}
 
 		//And lastly logs the received message with its timestamp
-		log.Printf("Received message \"%s\" at time %d\n", message.Message, message.Timestamp)
+		log.Printf("Received message \"%s\" at time %d\n", message.Message, client.lamport)
 
 	}
 }

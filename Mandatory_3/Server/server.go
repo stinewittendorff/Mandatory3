@@ -47,7 +47,7 @@ func (s *server) Broadcast(ctx context.Context, in *proto.Chatmessage) (*proto.C
 	// This updates our servers lamport timestamp (Logical time)
 	// If the servers timestamp is less than the message it adjust it to be one unit ahead of the messsage
 	// and if the message is equal or less it just adds one to it's own logical clock
-	if in.Timestamp > s.lamport {
+	if in.Timestamp > int64(s.lamport) {
 		s.lamport = in.Timestamp + 1
 	} else {
 		s.incrementLamport()
@@ -113,7 +113,7 @@ func (s *server) Join(in *proto.Join, stream grpc.ServerStreamingServer[proto.Se
 
 func (s *server) Leave(ctx context.Context, in *proto.Leave) (*proto.Chatmessage, error) {
 	// This updates our servers lamport timestamp
-	if in.Timestamp > s.lamport {
+	if in.Timestamp > int64(s.lamport) {
 		s.lamport = in.Timestamp + 1
 	} else {
 		s.incrementLamport()
